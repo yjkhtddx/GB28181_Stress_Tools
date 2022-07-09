@@ -52,5 +52,6 @@ void out_nalu(char * buffer, int size, NaluType naluType) {
 }
 
 int load(const char * path) {
+	printf("╪стьнд╪Ч[%s]=>%s()\n[%s:%d]\n",path, __FUNCTION__, __FILE__, __LINE__);
 	return simplest_h264_parser(path, out_nalu);
 }

@@ -69,12 +69,15 @@ CGB28181StressToolsDlg::CGB28181StressToolsDlg(CWnd* pParent /*=nullptr*/)
 	, m_edit_server_port(0)
 	, m_edit_device_count(0)
 	, m_edit_password(_T(""))
+	, m_edit_keepalive_cycle_ms(60000)
 {
+	printf("构造函数=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 }
 
 void CGB28181StressToolsDlg::DoDataExchange(CDataExchange* pDX)
 {
+	printf("页面加载=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
 	CDialogEx::DoDataExchange(pDX);
 	DDX_Control(pDX, IDC_LIST2, m_device_list);
 	DDX_Control(pDX, IDC_BUTTON1, m_btn_start);
@@ -83,6 +86,7 @@ void CGB28181StressToolsDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDIT3, m_edit_server_port);
 	DDX_Text(pDX, IDC_EDIT4, m_edit_device_count);
 	DDX_Text(pDX, IDC_EDIT5, m_edit_password);
+	DDX_Text(pDX, IDC_EDIT7, m_edit_keepalive_cycle_ms);
 }
 
 BEGIN_MESSAGE_MAP(CGB28181StressToolsDlg, CDialogEx)
@@ -152,6 +156,7 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 		ss << "<serverPort>5060</serverPort>";
 		ss << "<password>12345678</password>";
 		ss << "<count></count>";
+		ss << "<keepalive_cycle>6000</keepalive_cycle>";
 		ss << "</config>";
 		std::string buffer = ss.str();
 		config_file.append_buffer(buffer.c_str(), buffer.length());
@@ -166,6 +171,7 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 	m_edit_server_port = atoi(config.child("serverPort").child_value());
 	m_edit_password = config.child("password").child_value();
 	m_edit_device_count = atoi(config.child("count").child_value());
+	m_edit_keepalive_cycle_ms = atoi(config.child("keepalive_cycle").child_value());
 	UpdateData(false);
 
 	CRect list_rect;
@@ -175,14 +181,14 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 
 	//set_title
 	// 为列表视图控件添加三列   
-	m_device_list.InsertColumn(0, _T("序号"), LVCFMT_CENTER, list_rect.Width() / 10, 0);
-
-	m_device_list.InsertColumn(1, _T("DeviceId"), LVCFMT_CENTER, list_rect.Width() / 5, 0);
-	m_device_list.InsertColumn(2, _T("VideoChannelId"), LVCFMT_CENTER, list_rect.Width() / 5, 1);
-	m_device_list.InsertColumn(3, _T("信令监听端口"), LVCFMT_CENTER, list_rect.Width() / 8, 3);
-	m_device_list.InsertColumn(4, _T("推流监听端口"), LVCFMT_CENTER, list_rect.Width() / 8, 4);
-	m_device_list.InsertColumn(5, _T("推流协议"), LVCFMT_CENTER, list_rect.Width() / 8, 5);
-	m_device_list.InsertColumn(6, _T("状态"), LVCFMT_CENTER, list_rect.Width() / 8, 6);
+	m_device_list.InsertColumn(0, _T("序号"), LVCFMT_CENTER, list_rect.Width() * 0.1, 0);
+	m_device_list.InsertColumn(1, _T("DeviceId"), LVCFMT_CENTER, list_rect.Width() * 0.2, 0);
+	m_device_list.InsertColumn(2, _T("VideoChannelId"), LVCFMT_CENTER, list_rect.Width() * 0.1, 1);
+	m_device_list.InsertColumn(3, _T("信令监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 2);
+	m_device_list.InsertColumn(4, _T("推流监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 3);
+	m_device_list.InsertColumn(5, _T("心跳响应时间"), LVCFMT_CENTER, list_rect.Width() * 0.1, 4);
+	m_device_list.InsertColumn(6, _T("推流协议"), LVCFMT_CENTER, list_rect.Width() * 0.1, 5);
+	m_device_list.InsertColumn(7, _T("状态"), LVCFMT_CENTER, list_rect.Width() * 0.2, 6);
 	//ServerId
 	//ServerIp
 	//ServerPort
@@ -286,6 +292,9 @@ void CGB28181StressToolsDlg::Start() {
 	if (device_count > 10000) {
 		device_count = 9999;
 	}
+
+	printf("开启任务线程，测试数量[%d]=>%s()\n[%s:%d]\n",device_count, __FUNCTION__, __FILE__, __LINE__);
+
 	//多少Deivce对应一个队列
 	int rate = 20;
 
@@ -367,6 +376,12 @@ bool CGB28181StressToolsDlg::CheckParams() {
 		MessageBox(_T("模拟数量 必须大于1"));
 		return false;
 	}
+
+	if (m_edit_keepalive_cycle_ms <= 0) {
+		MessageBox(_T("心跳周期 必须大于1"));
+		return false;
+	}
+
 	if (m_edit_password.IsEmpty()) {
 		MessageBox(_T("密码不能为空"));
 		return false;
@@ -396,6 +411,8 @@ extern vector<Nalu*> nalu_vector;
 
 void CGB28181StressToolsDlg::OnBnClickedButton1()
 {
+	printf("点击开始按钮=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
+
 	//1.读取h264视频源
 	//获取参数，创建设备，开始通信
 	if (!is_started) {

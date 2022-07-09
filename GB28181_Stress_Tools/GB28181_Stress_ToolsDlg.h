@@ -41,6 +41,7 @@ private:
 	CString m_edit_server_ip;
 	int m_edit_server_port;
 	int m_edit_device_count;
+	int m_edit_keepalive_cycle_ms;
 
 	bool CheckParams();
 
@@ -55,4 +56,8 @@ public:
 	afx_msg void OnEnChangeEdit1();
 private:
 	CString m_edit_password;
+public:
+	afx_msg void OnLvnItemchangedList2(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnEnChangeEdit4();
+	afx_msg void OnEnChangeEdit7();
 };

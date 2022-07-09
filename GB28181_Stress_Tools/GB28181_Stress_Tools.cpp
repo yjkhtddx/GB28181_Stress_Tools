@@ -52,6 +52,7 @@ BOOL CGB28181StressToolsApp::InitInstance()
 
 	CWinApp::InitInstance();
 
+	printf("³ÌÐò¿ªÊ¼=>%s()\n[%s:%d]\n",__FUNCTION__, __FILE__, __LINE__);
 
 	AfxEnableControlContainer();
 
