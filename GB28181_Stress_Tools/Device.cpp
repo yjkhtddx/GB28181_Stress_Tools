@@ -3,6 +3,7 @@
 #include "Device.h"
 #include "pugixml.hpp"
 #include <vector>
+#include <time.h>
 #include <sstream>
 #include "gb28181_header_maker.h"
 using namespace std;
@@ -192,11 +193,15 @@ void Device::heartbeat_task() {
 		if (request != NULL) {
 			osip_message_set_content_type(request, "Application/MANSCDP+xml");
 			osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
-			send_request(request);
+			int tid = send_request(request);
+			if (tid > 0) {
+				std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
+				_heartbeat_map[tid] = clock();
+			}
 		}
 		//std::this_thread::sleep_for(std::chrono::seconds(60));
 		std::unique_lock<std::mutex> lck(_heartbeat_mutex);
-		_heartbeat_condition.wait_for(lck, std::chrono::seconds(60));
+		_heartbeat_condition.wait_for(lck, std::chrono::milliseconds(this->keepalive_cycle_ms));
 	}
 
 }
@@ -343,10 +348,12 @@ void Device::push_task() {
 	}
 }
 
-void Device::send_request(osip_message_t * request) {
+int Device::send_request(osip_message_t * request) {
+	int tid;
 	eXosip_lock(sip_context);
-	eXosip_message_send_request(sip_context, request);
+	tid = eXosip_message_send_request(sip_context, request);
 	eXosip_unlock(sip_context);
+	return tid;
 }
 
 osip_message_t* Device::create_request() {
@@ -552,7 +559,26 @@ void Device::process_request() {
 			process_call(evt);
 			break;
 			}
+		case EXOSIP_MESSAGE_ANSWERED: {
+			printf("消息响应=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
+			int tid = evt->tid;
+			clock_t diff = -1;
+			if (tid > 0 ) {
+				std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
+				if (_heartbeat_map.count(tid) == 1) {
+					diff =  clock() - _heartbeat_map[tid] ;
+					printf("响应时间为[ %d ms ]=>%s()\n[%s:%d]\n",diff, __FUNCTION__, __FILE__, __LINE__);
+				}
+			}
+			
+			if (diff > 0) {
+				callback(list_index, Message{ RES_TIME ,to_string(diff).c_str()});
+			}
+
+			break;
+			}
 		}
+
 
 		if (evt != NULL) {
 			eXosip_event_free(evt);

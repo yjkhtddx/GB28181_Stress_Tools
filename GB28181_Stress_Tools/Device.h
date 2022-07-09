@@ -15,6 +15,7 @@ extern "C" {
 #include <memory>
 #include <condition_variable>
 #include <mutex>
+#include <map>
 
 //----exosip----//
 
@@ -64,6 +65,8 @@ class Device {
 
 	int local_port;
 
+	int keepalive_cycle_ms;
+
 	eXosip_t * sip_context = nullptr;
 
 	NaluProvider* nalu_provider = nullptr;
@@ -76,9 +79,12 @@ class Device {
 
 	std::condition_variable _mobile_postion_condition;
 
+	std::mutex _heartbeat_map_mutex;
+
+	std::map<int, clock_t> _heartbeat_map;
+
 public:
-	Device(const char * deviceId, const char * channelId, const char * server_sip_id, const char * server_ip, int server_port, const char * password,
-		NaluProvider* nalu_provider) {
+	Device(const char * deviceId, const char * channelId, const char * server_sip_id, const char * server_ip, int server_port, const char * password,int keepalive_cycle_ms, NaluProvider* nalu_provider) {
 		memcpy(this->deviceId, deviceId, strlen(deviceId));
 		memcpy(this->videoChannelId, channelId, strlen(channelId));
 		memcpy(this->server_sip_id, server_sip_id, strlen(server_sip_id));
@@ -87,6 +93,7 @@ public:
 		this->server_port = server_port;
 		memcpy(this->password, password, strlen(password));
 		this->nalu_provider = nalu_provider;
+		this->keepalive_cycle_ms = keepalive_cycle_ms;
 	}
 	void start_sip_client(int local_port);
 
@@ -105,7 +112,7 @@ private:
 
 	osip_message_t * create_request();
 	
-	void send_request(osip_message_t * request);
+	int send_request(osip_message_t * request);
 
 	bool register_success = false;
 

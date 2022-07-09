@@ -1,9 +1,8 @@
 <?xml version="1.0"?>
 <config>
 	<serverId>41010200112007999913</serverId>
-	<serverIp>192.168.1.13</serverIp>
+	<serverIp>192.168.1.42</serverIp>
 	<serverPort>5060</serverPort>
 	<password>12345678</password>
-	<count>1</count>
-  <keepalive_cycle>6000</keepalive_cycle>
+	<count>10</count>
 </config>

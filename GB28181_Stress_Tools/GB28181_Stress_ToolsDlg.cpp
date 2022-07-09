@@ -156,7 +156,7 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 		ss << "<serverPort>5060</serverPort>";
 		ss << "<password>12345678</password>";
 		ss << "<count></count>";
-		ss << "<keepalive_cycle>6000</keepalive_cycle>";
+		ss << "<keepalive_cycle>60000</keepalive_cycle>";
 		ss << "</config>";
 		std::string buffer = ss.str();
 		config_file.append_buffer(buffer.c_str(), buffer.length());
@@ -172,6 +172,8 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 	m_edit_password = config.child("password").child_value();
 	m_edit_device_count = atoi(config.child("count").child_value());
 	m_edit_keepalive_cycle_ms = atoi(config.child("keepalive_cycle").child_value());
+	if (m_edit_device_count <= 0) m_edit_device_count = 1;
+	if (m_edit_keepalive_cycle_ms <= 0) m_edit_keepalive_cycle_ms = 60000;
 	UpdateData(false);
 
 	CRect list_rect;
@@ -183,12 +185,12 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 	// 为列表视图控件添加三列   
 	m_device_list.InsertColumn(0, _T("序号"), LVCFMT_CENTER, list_rect.Width() * 0.1, 0);
 	m_device_list.InsertColumn(1, _T("DeviceId"), LVCFMT_CENTER, list_rect.Width() * 0.2, 0);
-	m_device_list.InsertColumn(2, _T("VideoChannelId"), LVCFMT_CENTER, list_rect.Width() * 0.1, 1);
+	m_device_list.InsertColumn(2, _T("VideoChannelId"), LVCFMT_CENTER, list_rect.Width() * 0.2, 1);
 	m_device_list.InsertColumn(3, _T("信令监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 2);
 	m_device_list.InsertColumn(4, _T("推流监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 3);
 	m_device_list.InsertColumn(5, _T("心跳响应时间"), LVCFMT_CENTER, list_rect.Width() * 0.1, 4);
 	m_device_list.InsertColumn(6, _T("推流协议"), LVCFMT_CENTER, list_rect.Width() * 0.1, 5);
-	m_device_list.InsertColumn(7, _T("状态"), LVCFMT_CENTER, list_rect.Width() * 0.2, 6);
+	m_device_list.InsertColumn(7, _T("状态"), LVCFMT_CENTER, list_rect.Width() * 0.1, 6);
 	//ServerId
 	//ServerIp
 	//ServerPort
@@ -269,14 +271,17 @@ void CGB28181StressToolsDlg::update_item(int index, Message msg) {
 		return;
 	}
 	if (STATUS_TYPE == msg.type) {
-		m_device_list.SetItemText(index, 6, CString(msg.content));
+		m_device_list.SetItemText(index, 7, CString(msg.content));
 	}
 	else if (PULL_STREAM_PROTOCOL_TYPE== msg.type) {
-		m_device_list.SetItemText(index, 5, CString(msg.content));
+		m_device_list.SetItemText(index, 6, CString(msg.content));
 	}
 	else if (PULL_STREAM_PORT_TYPE == msg.type) {
 		m_device_list.SetItemText(index, 4, CString(msg.content));
 
+	}
+	else if (RES_TIME == msg.type) {
+		m_device_list.SetItemText(index, 5, CString(msg.content));
 	}
 }
 void paddingId(std::string& dst,int source) {
@@ -338,8 +343,7 @@ void CGB28181StressToolsDlg::Start() {
 			m_device_list.SetItemText(i, 5, _T(""));
 			m_device_list.SetItemText(i, 6, _T(""));
 
-			std::shared_ptr<Device> device_ptr = std::make_shared<Device>(device_id.c_str(), channel_id.c_str(), T2A(m_edit_server_sip_id), T2A(m_edit_server_ip), m_edit_server_port,
-				T2A(m_edit_password), nullptr);
+			std::shared_ptr<Device> device_ptr = std::make_shared<Device>(device_id.c_str(), channel_id.c_str(), T2A(m_edit_server_sip_id), T2A(m_edit_server_ip), m_edit_server_port,T2A(m_edit_password), m_edit_keepalive_cycle_ms, nullptr);
 			device_ptr->list_index = i;
 			device_ptr->set_callback(callback);
 			device_ptr->start_sip_client(start_port);
