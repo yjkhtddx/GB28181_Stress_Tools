@@ -249,6 +249,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\GB28181_Stress_Tools.ico" />
+    <Image Include="res\GB28181_Stress_Tools.ico.back" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

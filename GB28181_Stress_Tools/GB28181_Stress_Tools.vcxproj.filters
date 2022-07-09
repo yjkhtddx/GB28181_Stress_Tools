@@ -119,6 +119,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\GB28181_Stress_Tools.ico.back">
+      <Filter>Resource Files</Filter>
+    </Image>
     <Image Include="res\GB28181_Stress_Tools.ico">
       <Filter>Resource Files</Filter>
     </Image>
