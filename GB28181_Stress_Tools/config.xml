@@ -5,4 +5,5 @@
 	<serverPort>5060</serverPort>
 	<password>12345678</password>
 	<count>10</count>
+  <keepalive_cycle>60000</keepalive_cycle>
 </config>
