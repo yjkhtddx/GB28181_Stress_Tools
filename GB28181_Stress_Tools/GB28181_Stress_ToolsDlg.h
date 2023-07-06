@@ -42,6 +42,8 @@ private:
 	int m_edit_server_port;
 	int m_edit_device_count;
 	int m_edit_keepalive_cycle_ms;
+	int m_edit_catalog_count;
+	int m_edit_catalog_cycle_ms;
 
 	bool CheckParams();
 
@@ -52,12 +54,13 @@ private:
 	void update_item(int index, Message msg);
 
 	std::function<void(int index, Message msg)> callback;
-public:
-	afx_msg void OnEnChangeEdit1();
 private:
 	CString m_edit_password;
 public:
 	afx_msg void OnLvnItemchangedList2(NMHDR* pNMHDR, LRESULT* pResult);
-	afx_msg void OnEnChangeEdit4();
-	afx_msg void OnEnChangeEdit7();
+	afx_msg void OnEnChangeEdit8();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
+	afx_msg void OnStnClickedText();
+	afx_msg void OnStnClickedTimer();
+	CStatic timer;
 };

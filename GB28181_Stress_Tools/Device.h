@@ -72,19 +72,30 @@ class Device {
 	NaluProvider* nalu_provider = nullptr;
 
 	std::mutex _heartbeat_mutex;
-
+	std::mutex _catalog_mutex;
 	std::condition_variable _heartbeat_condition;
+	std::condition_variable _catalog_condition;
 
 	std::mutex _mobile_position_mutex;
 
 	std::condition_variable _mobile_postion_condition;
 
+	// 心跳相应记录
 	std::mutex _heartbeat_map_mutex;
-
 	std::map<int, clock_t> _heartbeat_map;
+	// 目录上报相应记录
+	std::mutex _catalog_map_mutex;
+	std::map<int, clock_t> _catalog_map;
+	// 目录上报序号
+	std::string catalog_sn;
+	// 目录上报总数
+	int catalog_count;
+	// 目录上报周期
+	int catalog_cycle;
 
 public:
-	Device(const char * deviceId, const char * channelId, const char * server_sip_id, const char * server_ip, int server_port, const char * password,int keepalive_cycle_ms, NaluProvider* nalu_provider) {
+	Device(const char * deviceId, const char * channelId,int count,int cycle,const char * server_sip_id, const char * server_ip, int server_port, const char * password,int keepalive_cycle_ms, NaluProvider* nalu_provider) {
+		// channelId 修改为前14位，发送时,后6位需要补充。
 		memcpy(this->deviceId, deviceId, strlen(deviceId));
 		memcpy(this->videoChannelId, channelId, strlen(channelId));
 		memcpy(this->server_sip_id, server_sip_id, strlen(server_sip_id));
@@ -94,6 +105,9 @@ public:
 		memcpy(this->password, password, strlen(password));
 		this->nalu_provider = nalu_provider;
 		this->keepalive_cycle_ms = keepalive_cycle_ms;
+		catalog_sn = "";
+		catalog_count = count;
+		catalog_cycle = cycle;
 	}
 	void start_sip_client(int local_port);
 
@@ -142,9 +156,13 @@ private:
 
 	bool is_heartbeat_running = false;
 
+	bool is_catalog_running = false;
+
 	void push_task();
 
 	void heartbeat_task();
+
+	void catalog_task();
 
 	void mobile_position_task();
 
@@ -154,9 +172,13 @@ private:
 
 	void create_mobile_position_task();
 
+	void create_catalog_task(std::string sn);
+
 	std::shared_ptr<std::thread> heartbeat_thread = nullptr;
 
 	std::shared_ptr<std::thread> mobile_position_thread = nullptr;
+	// Catalog相应线程
+	std::shared_ptr<std::thread> catalog_thread = nullptr;
 
 	std::shared_ptr<std::thread> push_stream_thread = nullptr;
 

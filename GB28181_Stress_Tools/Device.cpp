@@ -26,7 +26,7 @@ static int get_sn() {
 void Device::mobile_position_task() {
 	while (is_running && is_mobile_position_running) {
 		{
-			osip_message_t * notify_message = NULL;
+			osip_message_t* notify_message = NULL;
 			ExosipCtxLock lock(sip_context);
 			if (OSIP_SUCCESS != eXosip_insubscription_build_notify(sip_context, mobile_postition_dialog_id, EXOSIP_SUBCRSTATE_PENDING, EXOSIP_NOTIFY_PENDING, &notify_message)) {
 				std::cout << "eXosip_insubscription_build_notify error" << std::endl;
@@ -52,8 +52,66 @@ void Device::mobile_position_task() {
 		//eXosip_subscription_send_refresh_request(sip_context, mobile_postition_dialog_id, notify_message);
 		//this_thread::sleep_for(std::chrono::seconds(5));
 		std::unique_lock<std::mutex> lck(_mobile_position_mutex);
-		_mobile_postion_condition.wait_for(lck,std::chrono::seconds(5));
+		_mobile_postion_condition.wait_for(lck, std::chrono::seconds(5));
 	}
+}
+
+void catalog_paddingId(std::string& dst, int source, int paddingLen = 6) {
+	std::string number = to_string(source);
+	for (int i = number.length(); i < paddingLen; i++) {
+		dst.append("0");
+	}
+	dst.append(number);
+}
+
+void Device::catalog_task()
+{
+	int index = 1;
+
+	while (is_catalog_running)
+	{
+		if (index > catalog_count)
+		{
+			index = 1;
+		}
+		else {
+			index++;
+		}
+		std::string channel_id = videoChannelId;
+		catalog_paddingId(channel_id, index);
+		stringstream ss;
+		ss << "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n";
+		ss << "<Response>\r\n";
+		ss << "<CmdType>Catalog</CmdType>\r\n";
+		ss << "<SN>" << catalog_sn << "</SN>\r\n";
+		ss << "<DeviceID>" << deviceId << "</DeviceID>\r\n";
+		ss << "<SumNum>" << catalog_count << "</SumNum>\r\n";
+		ss << "<DeviceList Num=\"" << 1 << "\">\r\n";
+		ss << "<Item>\r\n";
+		ss << "<DeviceID>" << channel_id << "</DeviceID>\r\n";
+		ss << "<Name>IPC</Name>\r\n";
+		ss << "<ParentID>" << deviceId << "</ParentID>\r\n";
+		ss << "</Item>\r\n";
+		ss << "</DeviceList>\r\n";
+		ss << "</Response>\r\n";
+		osip_message_t* request = create_request();
+		if (request != NULL) {
+			osip_message_set_content_type(request, "Application/MANSCDP+xml");
+			osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
+			int tid = send_request(request);
+
+
+			/*if (tid > 0) {
+				std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
+				_catalog_map[tid] = clock();
+			}*/
+		}
+		std::unique_lock<std::mutex> lck(_catalog_mutex);
+		_catalog_condition.wait_for(lck, std::chrono::milliseconds(this->catalog_cycle));
+	}
+
+
+	is_catalog_running = false;
 }
 
 void Device::create_heartbeat_task()
@@ -69,11 +127,21 @@ void Device::create_heartbeat_task()
 	heartbeat_thread = std::make_shared<std::thread>(&Device::heartbeat_task, this);
 }
 
+void Device::create_catalog_task(std::string sn)
+{
+	if (is_catalog_running) {
+		return;
+	}
+	is_catalog_running = true;
+	catalog_sn = sn;
+	catalog_thread = std::make_shared<std::thread>(&Device::catalog_task, this);
+}
+
 void Device::create_push_stream_task()
 {
 	if (push_stream_thread) {
 		is_pushing = false;
-		if (push_stream_thread->joinable()){
+		if (push_stream_thread->joinable()) {
 			push_stream_thread->join();
 		}
 	}
@@ -93,10 +161,10 @@ void Device::create_mobile_position_task() {
 	mobile_position_thread = std::make_shared<std::thread>(&Device::mobile_position_task, this);
 }
 
-void Device::process_call(eXosip_event_t * evt)
+void Device::process_call(eXosip_event_t* evt)
 {
 	//解析sdp
-	osip_body_t *sdp_body = NULL;
+	osip_body_t* sdp_body = NULL;
 	osip_message_get_body(evt->request, 0, &sdp_body);
 	if (sdp_body != NULL) {
 		printf("request >>> %s", sdp_body->body);
@@ -105,7 +173,7 @@ void Device::process_call(eXosip_event_t * evt)
 		cout << "sdp error" << endl;
 		return;
 	}
-	sdp_message_t * sdp = NULL;
+	sdp_message_t* sdp = NULL;
 
 	if (OSIP_SUCCESS != sdp_message_init(&sdp)) {
 		cout << "sdp_message_init failed" << endl;
@@ -121,11 +189,11 @@ void Device::process_call(eXosip_event_t * evt)
 		}
 		return;
 	}
-	sdp_connection_t * connect = eXosip_get_video_connection(sdp);
-	sdp_media_t * media = eXosip_get_video_media(sdp);
+	sdp_connection_t* connect = eXosip_get_video_connection(sdp);
+	sdp_media_t* media = eXosip_get_video_media(sdp);
 	target_ip = connect->c_addr;
 	target_port = atoi(media->m_port);
-	char * protocol = media->m_proto;
+	char* protocol = media->m_proto;
 	is_tcp = strstr(protocol, "TCP");
 	if (callback != nullptr) {
 		char port[5];
@@ -160,7 +228,7 @@ void Device::process_call(eXosip_event_t * evt)
 
 	size_t size = sdp_str.size();
 
-	osip_message_t * message = evt->request;
+	osip_message_t* message = evt->request;
 	int status = eXosip_call_build_answer(sip_context, evt->tid, 200, &message);
 
 	if (status != 0) {
@@ -194,10 +262,12 @@ void Device::heartbeat_task() {
 			osip_message_set_content_type(request, "Application/MANSCDP+xml");
 			osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
 			int tid = send_request(request);
+			/*
 			if (tid > 0) {
 				std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
 				_heartbeat_map[tid] = clock();
 			}
+			*/
 		}
 		//std::this_thread::sleep_for(std::chrono::seconds(60));
 		std::unique_lock<std::mutex> lck(_heartbeat_mutex);
@@ -258,11 +328,11 @@ void Device::push_task() {
 			if (!is_pushing) {
 				break;
 			}
-			Nalu *nalu = nalu_vector.at(i);
+			Nalu* nalu = nalu_vector.at(i);
 
 			NaluType  type = nalu->type;
 			int length = nalu->length;
-			char * packet = nalu->packet;
+			char* packet = nalu->packet;
 
 			int index = 0;
 			if (NALU_TYPE_IDR == type) {
@@ -310,8 +380,8 @@ void Device::push_task() {
 
 				int writed_count = single_packet_max_length;
 
-				if ((i + 1)*single_packet_max_length > index) {
-					writed_count = index - (i* single_packet_max_length);
+				if ((i + 1) * single_packet_max_length > index) {
+					writed_count = index - (i * single_packet_max_length);
 				}
 				//添加包长字节
 				int rtp_start_index = 0;
@@ -325,7 +395,7 @@ void Device::push_task() {
 					rtp_start_index = 2;
 				}
 				memcpy(rtp_packet + rtp_start_index, rtp_header, RTP_HDR_LEN);
-				memcpy(rtp_packet + +rtp_start_index + RTP_HDR_LEN, frame + (i* single_packet_max_length), writed_count);
+				memcpy(rtp_packet + +rtp_start_index + RTP_HDR_LEN, frame + (i * single_packet_max_length), writed_count);
 				rtp_seq++;
 
 				udp_client->send_packet(target_ip, target_port, rtp_packet, rtp_start_index + rtp_packet_length);
@@ -348,7 +418,7 @@ void Device::push_task() {
 	}
 }
 
-int Device::send_request(osip_message_t * request) {
+int Device::send_request(osip_message_t* request) {
 	int tid;
 	eXosip_lock(sip_context);
 	tid = eXosip_message_send_request(sip_context, request);
@@ -381,19 +451,19 @@ osip_message_t* Device::create_request() {
 
 }
 
-void Device::send_response(eXosip_event_t *evt, osip_message_t * message) {
+void Device::send_response(eXosip_event_t* evt, osip_message_t* message) {
 	eXosip_lock(sip_context);
 	eXosip_message_send_answer(sip_context, evt->tid, 200, message);
 	eXosip_unlock(sip_context);
 }
 
-void Device::send_response_ok(eXosip_event_t *evt) {
-	osip_message_t * message = evt->request;
+void Device::send_response_ok(eXosip_event_t* evt) {
+	osip_message_t* message = evt->request;
 	eXosip_message_build_answer(sip_context, evt->tid, 200, &message);
 	send_response(evt, message);
 }
-void print_request(osip_message_t * request_message) {
-	char *dest = NULL;
+void print_request(osip_message_t* request_message) {
+	char* dest = NULL;
 	size_t length = 0;
 	int i = osip_message_to_str(request_message, &dest, &length);
 	if (i == 0)
@@ -407,7 +477,7 @@ void print_request(osip_message_t * request_message) {
 	}
 }
 void Device::process_request() {
-	eXosip_event_t *evt = NULL;
+	eXosip_event_t* evt = NULL;
 	while (is_running)
 	{
 		evt = eXosip_event_wait(sip_context, 0, 50);
@@ -423,7 +493,7 @@ void Device::process_request() {
 		case EXOSIP_IN_SUBSCRIPTION_NEW: {
 			//struct eXosip_t *excontext, int tid, int status, osip_message_t * answer
 			ExosipCtxLock lolck(sip_context);
-			osip_message_t * answer = NULL;
+			osip_message_t* answer = NULL;
 			if (OSIP_SUCCESS != eXosip_insubscription_build_answer(sip_context, evt->tid, 200, &answer)) {
 				eXosip_unlock(sip_context);
 				break;
@@ -436,7 +506,7 @@ void Device::process_request() {
 
 		case EXOSIP_MESSAGE_NEW: {
 			if (MSG_IS_MESSAGE(evt->request)) {
-				osip_body_t *body = NULL;
+				osip_body_t* body = NULL;
 				osip_message_get_body(evt->request, 0, &body);
 				if (body != NULL) {
 					printf("request >>> %s", body->body);
@@ -467,27 +537,9 @@ void Device::process_request() {
 					pugi::xml_node sn_node = root_node.child("SN");
 					string  cmd = cmd_node.child_value();
 					if ("Catalog" == cmd) {
-						stringstream ss;
-						ss << "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n";
-						ss << "<Response>\r\n";
-						ss << "<CmdType>Catalog</CmdType>\r\n";
-						ss << "<SN>" << sn_node.child_value() << "</SN>\r\n";
-						ss << "<DeviceID>" << deviceId << "</DeviceID>\r\n";
-						ss << "<SumNum>" << 1 << "</SumNum>\r\n";
-						ss << "<DeviceList Num=\"" << 1 << "\">\r\n";
-						ss << "<Item>\r\n";
-						ss << "<DeviceID>" << videoChannelId << "</DeviceID>\r\n";
-						ss << "<Name>IPC</Name>\r\n";
-						ss << "<ParentID>" << server_sip_id << "</ParentID>\r\n";
-						ss << "</Item>\r\n";
-						ss << "</DeviceList>\r\n";
-						ss << "</Response>\r\n";
-						osip_message_t* request = create_request();
-						if (request != NULL) {
-							osip_message_set_content_type(request, "Application/MANSCDP+xml");
-							osip_message_set_body(request, ss.str().c_str(), strlen(ss.str().c_str()));
-							send_request(request);
-						}
+
+						//std::string strSN = std::string(sn_node.child_value());
+						//create_catalog_task(strSN);
 					}
 					else if ("RecordInfo" == cmd) {
 						//processRecordInfo(root_note);
@@ -507,6 +559,7 @@ void Device::process_request() {
 			cout << "注册成功" << endl;
 			if (callback != nullptr) {
 				callback(list_index, Message{ STATUS_TYPE ,"注册成功" });
+				create_catalog_task(std::string("12345"));
 			}
 			register_success = true;
 			if (heartbeat_thread) {
@@ -558,25 +611,40 @@ void Device::process_request() {
 		case EXOSIP_CALL_INVITE: {
 			process_call(evt);
 			break;
-			}
+		}
 		case EXOSIP_MESSAGE_ANSWERED: {
+			/*
 			printf("消息响应=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
 			int tid = evt->tid;
-			clock_t diff = -1;
 			if (tid > 0 ) {
-				std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
-				if (_heartbeat_map.count(tid) == 1) {
-					diff =  clock() - _heartbeat_map[tid] ;
-					printf("响应时间为[ %d ms ]=>%s()\n[%s:%d]\n",diff, __FUNCTION__, __FILE__, __LINE__);
+				{
+					clock_t diff = -1;
+					std::lock_guard<std::mutex> guard(_heartbeat_map_mutex);
+					if (_heartbeat_map.count(tid) == 1) {
+						diff = clock() - _heartbeat_map[tid];
+						printf("响应时间为[ %d ms ]=>%s()\n[%s:%d]\n", diff, __FUNCTION__, __FILE__, __LINE__);
+					}
+					if (diff > 0) {
+						callback(list_index, Message{ HEARTBEAT_RES_TIME ,to_string(diff).c_str() });
+					}
+				}
+				{
+					clock_t diff = -1;
+					std::lock_guard<std::mutex> guard(_catalog_map_mutex);
+					if (_catalog_map.count(tid) == 1) {
+						diff = clock() - _catalog_map[tid];
+						printf("响应时间为[ %d ms ]=>%s()\n[%s:%d]\n", diff, __FUNCTION__, __FILE__, __LINE__);
+					}
+					if (diff > 0) {
+						callback(list_index, Message{ CATALOG_RES_TIME ,to_string(diff).c_str() });
+					}
 				}
 			}
-			
-			if (diff > 0) {
-				callback(list_index, Message{ RES_TIME ,to_string(diff).c_str()});
-			}
+
+			*/
 
 			break;
-			}
+		}
 		}
 
 
@@ -631,7 +699,7 @@ void Device::start_sip_client(int local_port) {
 	eXosip_clear_authentication_info(sip_context);
 
 
-	osip_message_t * register_message = NULL;
+	osip_message_t* register_message = NULL;
 	//struct eXosip_t *excontext, const char *from, const char *proxy, const char *contact, int expires, osip_message_t ** reg
 	int register_id = eXosip_register_build_initial_register(sip_context, from_uri, proxy_uri, contact, 3600, &register_message);
 	if (register_message == NULL) {
@@ -668,6 +736,12 @@ Device::~Device()
 		_heartbeat_condition.notify_one();
 		heartbeat_thread->join();
 	}
+	is_catalog_running = false;
+	if (catalog_thread && catalog_thread->joinable())
+	{
+		_catalog_condition.notify_one();
+		catalog_thread->join();
+	}
 	is_mobile_position_running = false;
 	if (mobile_position_thread && mobile_position_thread->joinable()) {
 		_mobile_postion_condition.notify_one();
@@ -675,7 +749,7 @@ Device::~Device()
 	}
 
 	is_pushing = false;
-	if (push_stream_thread && push_stream_thread->joinable()){
+	if (push_stream_thread && push_stream_thread->joinable()) {
 		push_stream_thread->join();
 	}
 	if (callback != nullptr) {

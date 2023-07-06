@@ -70,6 +70,8 @@ CGB28181StressToolsDlg::CGB28181StressToolsDlg(CWnd* pParent /*=nullptr*/)
 	, m_edit_device_count(0)
 	, m_edit_password(_T(""))
 	, m_edit_keepalive_cycle_ms(60000)
+	, m_edit_catalog_count(100)
+	, m_edit_catalog_cycle_ms(100)
 {
 	printf("构造函数=>%s()\n[%s:%d]\n", __FUNCTION__, __FILE__, __LINE__);
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
@@ -87,6 +89,9 @@ void CGB28181StressToolsDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Text(pDX, IDC_EDIT4, m_edit_device_count);
 	DDX_Text(pDX, IDC_EDIT5, m_edit_password);
 	DDX_Text(pDX, IDC_EDIT7, m_edit_keepalive_cycle_ms);
+	DDX_Text(pDX, IDC_EDIT6, m_edit_catalog_count);
+	DDX_Text(pDX, IDC_EDIT8, m_edit_catalog_cycle_ms);
+	DDX_Control(pDX, IDC_STATIC_TIMER, timer);
 }
 
 BEGIN_MESSAGE_MAP(CGB28181StressToolsDlg, CDialogEx)
@@ -94,7 +99,8 @@ BEGIN_MESSAGE_MAP(CGB28181StressToolsDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BUTTON1, &CGB28181StressToolsDlg::OnBnClickedButton1)
-	ON_EN_CHANGE(IDC_EDIT1, &CGB28181StressToolsDlg::OnEnChangeEdit1)
+	ON_EN_CHANGE(IDC_EDIT8, &CGB28181StressToolsDlg::OnEnChangeEdit8)
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 //控制台初始化
@@ -155,8 +161,10 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 		ss << "<serverIp></serverIp>";
 		ss << "<serverPort>5060</serverPort>";
 		ss << "<password>12345678</password>";
-		ss << "<count></count>";
-		ss << "<keepalive_cycle>60000</keepalive_cycle>";
+		ss << "<count>1</count>";
+		ss << "<keepalive_cycle_ms>60000</keepalive_cycle_ms>";
+		ss << "<catalog_count>100</catalog_count>";
+		ss << "<catalog_cycle_ms>100</catalog_cycle_ms>";
 		ss << "</config>";
 		std::string buffer = ss.str();
 		config_file.append_buffer(buffer.c_str(), buffer.length());
@@ -171,9 +179,13 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 	m_edit_server_port = atoi(config.child("serverPort").child_value());
 	m_edit_password = config.child("password").child_value();
 	m_edit_device_count = atoi(config.child("count").child_value());
-	m_edit_keepalive_cycle_ms = atoi(config.child("keepalive_cycle").child_value());
+	m_edit_keepalive_cycle_ms = atoi(config.child("keepalive_cycle_ms").child_value());
+	m_edit_catalog_count = atoi(config.child("catalog_count").child_value());
+	m_edit_catalog_cycle_ms = atoi(config.child("catalog_cycle_ms").child_value());
 	if (m_edit_device_count <= 0) m_edit_device_count = 1;
 	if (m_edit_keepalive_cycle_ms <= 0) m_edit_keepalive_cycle_ms = 60000;
+	if (m_edit_catalog_count <= 0) m_edit_catalog_count = 100;
+	if (m_edit_catalog_cycle_ms <= 0) m_edit_catalog_cycle_ms = 100;
 	UpdateData(false);
 
 	CRect list_rect;
@@ -184,13 +196,14 @@ BOOL CGB28181StressToolsDlg::OnInitDialog()
 	//set_title
 	// 为列表视图控件添加三列   
 	m_device_list.InsertColumn(0, _T("序号"), LVCFMT_CENTER, list_rect.Width() * 0.1, 0);
-	m_device_list.InsertColumn(1, _T("DeviceId"), LVCFMT_CENTER, list_rect.Width() * 0.2, 0);
-	m_device_list.InsertColumn(2, _T("VideoChannelId"), LVCFMT_CENTER, list_rect.Width() * 0.2, 1);
-	m_device_list.InsertColumn(3, _T("信令监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 2);
-	m_device_list.InsertColumn(4, _T("推流监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 3);
-	m_device_list.InsertColumn(5, _T("心跳响应时间"), LVCFMT_CENTER, list_rect.Width() * 0.1, 4);
-	m_device_list.InsertColumn(6, _T("推流协议"), LVCFMT_CENTER, list_rect.Width() * 0.1, 5);
-	m_device_list.InsertColumn(7, _T("状态"), LVCFMT_CENTER, list_rect.Width() * 0.1, 6);
+	m_device_list.InsertColumn(1, _T("设备ID编码"), LVCFMT_CENTER, list_rect.Width() * 0.15, 1);
+	m_device_list.InsertColumn(2, _T("通道ID前缀"), LVCFMT_CENTER, list_rect.Width() * 0.15, 2);
+	m_device_list.InsertColumn(3, _T("信令监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 3);
+	m_device_list.InsertColumn(4, _T("推流监听端口"), LVCFMT_CENTER, list_rect.Width() * 0.1, 4);
+	m_device_list.InsertColumn(5, _T("心跳响应时间"), LVCFMT_CENTER, list_rect.Width() * 0.1, 5);
+	m_device_list.InsertColumn(6, _T("推流协议"), LVCFMT_CENTER, list_rect.Width() * 0.1, 6);
+	m_device_list.InsertColumn(7, _T("状态"), LVCFMT_CENTER, list_rect.Width() * 0.1, 7);
+	m_device_list.InsertColumn(8, _T("目录响应时间"), LVCFMT_CENTER, list_rect.Width() * 0.1, 8);
 	//ServerId
 	//ServerIp
 	//ServerPort
@@ -280,13 +293,16 @@ void CGB28181StressToolsDlg::update_item(int index, Message msg) {
 		m_device_list.SetItemText(index, 4, CString(msg.content));
 
 	}
-	else if (RES_TIME == msg.type) {
+	else if (HEARTBEAT_RES_TIME == msg.type) {
 		m_device_list.SetItemText(index, 5, CString(msg.content));
 	}
+	else if (CATALOG_RES_TIME == msg.type) {
+		m_device_list.SetItemText(index, 8, CString(msg.content));
+	}
 }
-void paddingId(std::string& dst,int source) {
+void paddingId(std::string& dst,int source,int paddingLen = 4) {
 	std::string number =  to_string(source);
-	for (int i = number.length();i < 4; i++) {
+	for (int i = number.length();i < paddingLen; i++) {
 		dst.append("0");
 	}
 	dst.append(number);
@@ -306,8 +322,8 @@ void CGB28181StressToolsDlg::Start() {
 	int start_port = 50000;
 
 	callback = std::bind(&CGB28181StressToolsDlg::update_item,this, std::placeholders::_1, std::placeholders::_2);
-	std::string device_id_prefix = "3402000000132000";
-	std::string channel_id_prefix = "3402000000131000";
+	std::string device_id_prefix = "410102";
+	std::string channel_id_prefix = "410102";
 	std::string device_id;
 	std::string channel_id;
 	for (int i = 0; i < device_count; i++) {
@@ -322,9 +338,14 @@ void CGB28181StressToolsDlg::Start() {
 
 		channel_id = channel_id_prefix;
 
-		paddingId(device_id,i+1);
+		paddingId(device_id, i+1);
 
 		paddingId(channel_id, i+1);
+
+		device_id.append(std::string("118700"));
+		channel_id.append(std::string("1317"));
+
+		paddingId(device_id, i + 1);
 		
 		int index = i / rate;
 		
@@ -343,7 +364,7 @@ void CGB28181StressToolsDlg::Start() {
 			m_device_list.SetItemText(i, 5, _T(""));
 			m_device_list.SetItemText(i, 6, _T(""));
 
-			std::shared_ptr<Device> device_ptr = std::make_shared<Device>(device_id.c_str(), channel_id.c_str(), T2A(m_edit_server_sip_id), T2A(m_edit_server_ip), m_edit_server_port,T2A(m_edit_password), m_edit_keepalive_cycle_ms, nullptr);
+			std::shared_ptr<Device> device_ptr = std::make_shared<Device>(device_id.c_str(), channel_id.c_str(), m_edit_catalog_count, m_edit_catalog_cycle_ms, T2A(m_edit_server_sip_id), T2A(m_edit_server_ip), m_edit_server_port,T2A(m_edit_password), m_edit_keepalive_cycle_ms, nullptr);
 			device_ptr->list_index = i;
 			device_ptr->set_callback(callback);
 			device_ptr->start_sip_client(start_port);
@@ -386,6 +407,21 @@ bool CGB28181StressToolsDlg::CheckParams() {
 		return false;
 	}
 
+	if (m_edit_catalog_count <= 0) {
+		MessageBox(_T("目录上报数 必须大于1"));
+		return false;
+	}
+
+	if (m_edit_catalog_count >= 10000) {
+		MessageBox(_T("目录上报数 必须小于10000"));
+		return false;
+	}
+
+	if (m_edit_catalog_cycle_ms < 10) {
+		MessageBox(_T("目录上报周期 必须大于10"));
+		return false;
+	}
+
 	if (m_edit_password.IsEmpty()) {
 		MessageBox(_T("密码不能为空"));
 		return false;
@@ -404,6 +440,9 @@ bool CGB28181StressToolsDlg::CheckParams() {
 	ss << "<serverPort>"<< m_edit_server_port<<"</serverPort>";
 	ss << "<password>"<< T2A(m_edit_password) <<"</password>";
 	ss << "<count>"<< m_edit_device_count <<"</count>";
+	ss << "<keepalive_cycle_ms>" << m_edit_keepalive_cycle_ms << "</keepalive_cycle_ms>";
+	ss << "<catalog_count>" << m_edit_catalog_count << "</catalog_count>";
+	ss << "<catalog_cycle_ms>" << m_edit_catalog_cycle_ms << "</catalog_cycle_ms>";
 	ss << "</config>";
 	config_file.reset();
 	std::string buffer =  ss.str();
@@ -447,17 +486,33 @@ void CGB28181StressToolsDlg::OnBnClickedButton1()
 		m_btn_start.SetWindowTextW(_T("开始"));
 
 	}
+
+	SetTimer(1, 1000, NULL);
 	// TODO: Add your control notification handler code here
 }
 
 
-void CGB28181StressToolsDlg::OnEnChangeEdit1()
-{
-	// TODO:  If this is a RICHEDIT control, the control will not
-	// send this notification unless you override the CDialogEx::OnInitDialog()
-	// function and call CRichEditCtrl().SetEventMask()
-	// with the ENM_CHANGE flag ORed into the mask.
 
-	// TODO:  Add your control notification handler code here
+void CGB28181StressToolsDlg::OnEnChangeEdit8()
+{
+	// TODO:  如果该控件是 RICHEDIT 控件，它将不
+	// 发送此通知，除非重写 CDialogEx::OnInitDialog()
+	// 函数并调用 CRichEditCtrl().SetEventMask()，
+	// 同时将 ENM_CHANGE 标志“或”运算到掩码中。
+
+	// TODO:  在此添加控件通知处理程序代码
 }
 
+
+void CGB28181StressToolsDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+	static int i = 0;
+	i++;
+
+	printf("计时器=>%s()\n", __FUNCTION__, __FILE__, __LINE__);
+
+	timer.SetWindowText(CString(std::to_string(i).c_str()));
+	
+	CDialogEx::OnTimer(nIDEvent);
+}
